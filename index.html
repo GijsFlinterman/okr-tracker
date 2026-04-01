@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OKR Tracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;background:linear-gradient(135deg,#f0f2f5,#c9d6e3)}
+.nav{background:rgba(255,255,255,.9);border-bottom:1px solid #ddd;padding:8px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.btn{border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:600;font-size:12px;background:transparent;color:#555}
+.btn.on{background:#333;color:#fff}
+.container{padding:12px;max-width:1400px;margin:0 auto}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:7px 18px;border-radius:8px;font-size:12px;z-index:999;display:none}
+.card{padding:14px 16px;border-radius:10px;box-shadow:3px 4px 12px rgba(0,0,0,.13);position:relative;flex:1 1 240px;max-width:300px;min-width:180px}
+.post-it{padding:7px 10px;border-radius:6px;box-shadow:2px 2px 6px rgba(0,0,0,.11);position:relative;font-size:12px;word-break:break-word;margin-bottom:6px}
+.x-btn{position:absolute;top:1px;right:5px;background:none;border:none;cursor:pointer;font-size:13px;color:#999}
+.kr-sec{background:rgba(255,255,255,.7);border-radius:14px;padding:12px;margin-bottom:12px}
+.col{border-radius:10px;padding:8px;min-height:50px}
+.add-d{background:none;border:2px dashed #bbb;border-radius:6px;padding:5px 10px;cursor:pointer;color:#888;font-size:11px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:12px}
+.modal{background:#fff;border-radius:14px;padding:20px 16px;max-width:460px;width:100%;max-height:85vh;overflow:auto}
+.thermo{flex:1;min-width:60px;background:#ddd;border-radius:10px;height:16px;overflow:hidden;position:relative}
+.thermo-fill{height:100%;border-radius:10px;transition:width .4s}
+.thermo-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700}
+.sbtn{font-size:9px;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;color:#fff}
+input[type=range]{height:6px;cursor:pointer;accent-color:#42a5f5}
+@media(max-width:600px){.col-grid{grid-template-columns:1fr!important}}
+</style>
+</head>
+<body>
+<div id="app"><div style="padding:60px;text-align:center;color:#888"><div style="font-size:52px;margin-bottom:10px">📌</div><p>Laden...</p></div></div>
+<div class="toast" id="toast"></div>
+<script>
+var BIN_ID="69cd6f0036566621a86e13ba";
+var API_KEY="$2a$10$6qeINLpwovNPnnMotBLoXeSkdSkHgm/s8DGe6GqA5aCsa4vhzaat2";
+var BIN_URL="https://api.jsonbin.io/v3/b/"+BIN_ID;
+var PASS="Hf6355ppqws";
+var CO=["#FFD93D","#FFB347","#FF6B6B","#C9B1FF","#6BCB77"];
+var CK=["#AEE2FF","#B5EAD7","#FFDAC1","#E2F0CB","#FFB7B2"];
+var CP=["#FFF9C4","#FFECB3","#F0F4C3","#CFD8DC","#D1C4E9"];
+var PC=["#FFF9C4","#FFECB3","#F0F4C3","#CFD8DC","#D1C4E9","#FFCDD2","#B2EBF2","#C8E6C9","#FFE0B2","#F8BBD0"];
+var state={objectives:[],sprints:[]};
+var authed=false,selObj=null,showHist=false,confirmSpr=false;
+var refreshTimer=null;
+
+function gid(){return Math.random().toString(36).substr(2,9);}
+function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function toast(m){var e=document.getElementById("toast");e.textContent=m;e.style.display="block";setTimeout(function(){e.style.display="none";},2000);}
+function linkify(s){return String(s||"").replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:#1976d2;font-size:inherit;word-break:break-all" onclick="event.stopPropagation()">Link</a>');}
+
+async function loadBin(){
+try{var r=await fetch(BIN_URL+"/latest",{headers:{"X-Access-Key":API_KEY}});
+if(!r.ok)throw new Error(r.status);var d=await r.json();
+if(d.record&&d.record.objectives){state=d.record;if(!state.sprints)state.sprints=[];return true;}}catch(e){console.error("Load error",e);}return false;
+}
+async function saveBin(){
+try{await fetch(BIN_URL,{method:"PUT",headers:{"Content-Type":"application/json","X-Access-Key":API_KEY},body:JSON.stringify(state)});}catch(e){console.error("Save error",e);}
+}
+
+function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(function(){loadBin().then(function(ok){if(ok)render();});},30000);}
+
+function thermo(pct,done,tot,isM){
+var bg=pct>=100?"linear-gradient(90deg,#43a047,#81c784)":"linear-gradient(90deg,#42a5f5,#66bb6a)";
+var lb=isM?pct+"% (handmatig)":done+"/"+tot+" ("+pct+"%)";
+return'<div style="display:flex;align-items:center;gap:4px;margin:3px 0"><span style="font-size:10px">🌡️</span><div class="thermo"><div class="thermo-fill" style="width:'+pct+'%;background:'+bg+'"></div><span class="thermo-lbl" style="color:'+(pct>40?"#fff":"#444")+'">'+lb+'</span></div></div>';
+}
+
+function render(){
+if(!authed){renderLogin();return;}
+var h='<div class="nav"><span style="font-size:18px">📌</span><span style="font-weight:800;font-size:15px;color:#333">OKR</span><span style="color:#ccc">|</span>';
+h+='<button class="btn'+(!selObj&&!showHist?" on":"")+'" onclick="navHome()">🎯</button>';
+h+='<button class="btn'+(showHist?" on":"")+'" onclick="navHist()">📜</button>';
+h+='<button class="btn" onclick="doExport()">📥</button>';
+h+='<button class="btn" onclick="showImport()">📤</button>';
+h+='<button class="btn" onclick="doRefresh()">🔄</button>';
+if(selObj){var obj=state.objectives.find(function(o){return o.id===selObj;});
+if(obj){if(!confirmSpr)h+='<button class="btn" style="background:#e53935;color:#fff" onclick="confirmSpr=true;render()">🏁</button>';
+else h+='<span style="font-size:10px;color:#c62828;font-weight:600">Zeker?</span><button class="btn" style="background:#c62828;color:#fff;font-size:10px" onclick="doSprint()">✓</button><button class="btn" style="font-size:10px" onclick="confirmSpr=false;render()">✕</button>';
+h+='<span style="font-size:11px;color:#333;font-weight:600;background:#e0e0e0;border-radius:6px;padding:2px 8px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(obj.title)+'</span>';}}
+h+='</div><div class="container">';
+if(showHist)h+=renderHist();else if(!selObj)h+=renderObjs();else h+=renderKRs();
+h+='</div>';document.getElementById("app").innerHTML=h;
+}
+
+function renderLogin(){
+document.getElementById("app").innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;background:linear-gradient(135deg,#f0f2f5,#c9d6e3)"><div style="background:#fff;border-radius:16px;padding:32px 24px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center;max-width:340px;width:100%"><div style="font-size:48px;margin-bottom:12px">🔒</div><h2 style="font-size:18px;color:#333;margin-bottom:4px">OKR Tracker</h2><p style="font-size:13px;color:#888;margin-bottom:20px">Voer het wachtwoord in</p><input type="password" id="pw" placeholder="Wachtwoord" onkeydown="if(event.key===\'Enter\')doLogin()" style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px;outline:none;margin-bottom:8px;box-sizing:border-box"><div id="pw-err" style="display:none;font-size:12px;color:#e53935;margin-bottom:8px">Onjuist wachtwoord</div><button onclick="doLogin()" style="width:100%;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer">Inloggen</button></div></div>';
+}
+
+function doLogin(){var v=document.getElementById("pw").value;if(v===PASS){authed=true;render();startRefresh();}else{document.getElementById("pw-err").style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
+
+function renderObjs(){
+var h='<h2 style="font-size:18px;color:#333;margin-bottom:10px">🎯 Objectives</h2><div style="display:flex;flex-wrap:wrap;gap:12px">';
+state.objectives.forEach(function(obj,i){
+var krs=obj.keyResults||[];var td=0,ta=0;
+krs.forEach(function(k){var p=k.prios||{ultiem:[],nice:[],done:[]};td+=p.done.length;ta+=(k.ideas||[]).length+p.ultiem.length+p.nice.length+p.done.length;});
+var isM=obj.manualPct!=null&&obj.manualPct>=0;var pct=isM?obj.manualPct:(ta>0?Math.round(td/ta*100):0);
+h+='<div class="card" style="background:'+esc(obj.color||CO[i%5])+';transform:rotate('+((i%5-2)*.8)+'deg)">';
+h+='<button class="x-btn" onclick="event.stopPropagation();delObj(\''+obj.id+'\')">×</button>';
+h+='<div onclick="navObj(\''+obj.id+'\')" style="cursor:pointer"><div style="font-weight:700;font-size:16px;margin-bottom:4px">'+esc(obj.title)+'</div>';
+h+='<div style="font-size:11px;color:#555;margin-bottom:6px">'+krs.length+' KRs</div>';
+h+='<div style="font-size:10px;color:#666;text-align:center;font-style:italic">Klik →</div></div>';
+h+='<div onclick="event.stopPropagation()" style="margin-top:6px;background:rgba(255,255,255,.45);border-radius:8px;padding:6px 8px">'+thermo(pct,td,ta,isM);
+h+='<div style="display:flex;align-items:center;gap:4px;margin-top:3px"><input type="range" min="0" max="100" value="'+pct+'" oninput="setObjPct(\''+obj.id+'\',this.value)" style="flex:1">';
+h+='<span style="font-size:9px;font-weight:700;min-width:28px">'+pct+'%</span>';
+if(isM)h+='<button class="sbtn" style="background:#ff9800" onclick="clearObjPct(\''+obj.id+'\')">Auto</button>';
+h+='</div></div></div>';
+});
+h+='<button class="add-d" onclick="addObj()">+ Objective</button></div>';
+if(!state.objectives.length)h+='<div style="text-align:center;padding:40px;color:#999"><div style="font-size:48px;margin-bottom:8px">🎯</div><p>Voeg je eerste Objective toe!</p></div>';
+return h;
+}
+
+function renderKRs(){
+var obj=state.objectives.find(function(o){return o.id===selObj;});if(!obj)return'';
+var h='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><span style="width:16px;height:16px;border-radius:3px;background:'+esc(obj.color)+';display:inline-block"></span><h2 style="font-size:18px;margin:0">'+esc(obj.title)+'</h2></div>';
+(obj.keyResults||[]).forEach(function(kr){
+var ideas=kr.ideas||[];var p=kr.prios||{ultiem:[],nice:[],done:[]};
+var dn=p.done.length;var tot=ideas.length+p.ultiem.length+p.nice.length+dn;
+var isM=kr.manualPct!=null&&kr.manualPct>=0;var pct=isM?kr.manualPct:(tot>0?Math.round(dn/tot*100):0);
+h+='<div class="kr-sec" style="border-left:4px solid '+esc(kr.color)+'">';
+h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;position:relative">';
+h+='<button class="x-btn" onclick="delKR(\''+obj.id+'\',\''+kr.id+'\')">×</button>';
+h+='<span style="font-weight:700;font-size:14px">'+esc(kr.title)+'</span>';
+h+='<button class="btn" style="margin-left:auto;font-size:10px" onclick="tog(\'ideas-'+kr.id+'\')">💡 ('+ideas.length+')</button></div>';
+h+=thermo(pct,dn,tot,isM);
+h+='<div style="display:flex;align-items:center;gap:4px;margin:3px 0 6px"><input type="range" min="0" max="100" value="'+pct+'" oninput="setKRPct(\''+obj.id+'\',\''+kr.id+'\',this.value)" style="flex:1"><span style="font-size:9px;font-weight:700;min-width:28px">'+pct+'%</span>';
+if(isM)h+='<button class="sbtn" style="background:#ff9800" onclick="clearKRPct(\''+obj.id+'\',\''+kr.id+'\')">Auto</button>';
+h+='</div>';
+// Ideas
+h+='<div id="ideas-'+kr.id+'" style="display:none;background:#f5f5f5;border-radius:8px;padding:10px;margin-bottom:8px">';
+h+='<div style="font-size:11px;font-weight:600;color:#555;margin-bottom:4px">💡 Ideeënpool</div>';
+ideas.forEach(function(idea,idx){
+h+='<div class="post-it" style="background:'+esc(idea.color||"#FFF9C4")+'">';
+h+='<button class="x-btn" onclick="delIdea(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\')">×</button>';
+h+='<div style="display:flex;gap:3px;align-items:flex-start">';
+h+='<div style="display:flex;flex-direction:column;gap:1px"><button style="font-size:9px;background:none;border:none;cursor:pointer;padding:0;color:'+(idx===0?"#ccc":"#666")+'" onclick="moveIdeaUp(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\')">▲</button><button style="font-size:9px;background:none;border:none;cursor:pointer;padding:0;color:'+(idx===ideas.length-1?"#ccc":"#666")+'" onclick="moveIdeaDown(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\')">▼</button></div>';
+h+='<div style="flex:1"><div style="padding-right:12px;margin-bottom:3px">'+esc(idea.text)+'</div>';
+if(idea.note)h+='<div style="font-size:9px;color:#666;font-style:italic;margin-bottom:2px">📝 '+linkify(esc(idea.note))+'</div>';
+h+='<div style="display:flex;gap:3px;flex-wrap:wrap">';
+h+='<button class="sbtn" style="background:#ef5350" onclick="moveIdTo(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\',\'ultiem\')">🔥</button>';
+h+='<button class="sbtn" style="background:#ffa726" onclick="moveIdTo(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\',\'nice\')">💡</button>';
+h+='<button class="sbtn" style="background:#e0e0e0;color:#555" onclick="editNote(\''+obj.id+'\',\''+kr.id+'\',\'idea\',\''+idea.id+'\')">📝</button>';
+h+='<button class="sbtn" style="background:#90a4ae" onclick="editText(\''+obj.id+'\',\''+kr.id+'\',\'idea\',\''+idea.id+'\')">✏️</button>';
+h+='</div></div></div></div>';
+});
+h+='<button class="add-d" style="font-size:10px;padding:3px 8px;margin-top:4px" onclick="addIdea(\''+obj.id+'\',\''+kr.id+'\')">+ Idee</button></div>';
+// Columns
+h+='<div class="col-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+[{k:"ultiem",l:"🔥 Ultiem",bg:"#ffcdd2",lim:1},{k:"nice",l:"💡 Nice",bg:"#fff9c4",lim:1},{k:"done",l:"✅ Behaald",bg:"#c8e6c9",lim:null}].forEach(function(col){
+var its=p[col.k]||[];var full=col.lim&&its.length>=col.lim;var isDone=col.k==="done";
+h+='<div class="col" style="background:'+col.bg+'">';
+h+='<div style="font-weight:700;font-size:11px;text-align:center;margin-bottom:4px;color:#444">'+col.l;
+if(col.lim)h+='<span style="font-size:9px;color:'+(full?"#c62828":"#888")+';margin-left:3px">'+(full?"✋":"('+col.lim+')")+'</span>';
+h+='</div><div style="display:flex;flex-direction:column;gap:4px;'+(isDone?"max-height:180px;overflow-y:auto":"")+'">';
+its.forEach(function(item){
+var bg2=isDone?"#a5d6a7":(item.color||"#FFF9C4");
+h+='<div class="post-it" style="background:'+esc(bg2)+';opacity:'+(isDone?.8:1)+'">';
+h+='<button class="x-btn" onclick="delPrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">×</button>';
+h+='<div style="padding-right:12px">'+(isDone?"✅ ":"")+esc(item.text)+'</div>';
+if(item.note)h+='<div style="font-size:9px;color:#666;font-style:italic;margin-top:1px">📝 '+linkify(esc(item.note))+'</div>';
+h+='<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">';
+if(col.k!=="done")h+='<button class="sbtn" style="background:#43a047" onclick="movePrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'done\')">✅</button>';
+h+='<button class="sbtn" style="background:#78909c" onclick="movePrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'ideas\')">←</button>';
+if(col.k!=="ultiem"&&col.k!=="done")h+='<button class="sbtn" style="background:#ef5350" onclick="moveChecked(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'ultiem\')">🔥</button>';
+if(col.k!=="nice"&&col.k!=="done")h+='<button class="sbtn" style="background:#ffa726" onclick="moveChecked(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'nice\')">💡</button>';
+h+='<button class="sbtn" style="background:#e0e0e0;color:#555" onclick="editNote(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">📝</button>';
+h+='<button class="sbtn" style="background:#90a4ae" onclick="editText(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">✏️</button>';
+h+='</div></div>';});
+if(!its.length)h+='<div style="text-align:center;font-size:9px;color:#aaa;padding:6px;font-style:italic">Leeg</div>';
+h+='</div></div>';});
+h+='</div></div>';});
+h+='<button class="add-d" style="margin-top:8px" onclick="addKR(\''+obj.id+'\')">+ Key Result</button>';
+return h;
+}
+
+function renderHist(){
+var h='<h2 style="font-size:18px;color:#333;margin-bottom:10px">📜 Sprint Historie</h2>';
+if(!state.sprints||!state.sprints.length)return h+'<p style="color:#999">Nog geen sprints.</p>';
+state.sprints.slice().reverse().forEach(function(s){
+h+='<div style="background:rgba(255,255,255,.7);border-radius:10px;padding:12px;margin-bottom:10px;border-left:4px solid #90a4ae">';
+h+='<div style="font-weight:700;font-size:14px;margin-bottom:6px">📅 '+esc(s.date)+'</div>';
+(s.items||[]).forEach(function(it){
+h+='<div style="margin-bottom:6px;padding-left:6px;border-left:3px solid #ddd"><div style="font-size:11px;color:#888">'+esc(it.obj)+' › <b>'+esc(it.kr)+'</b></div>';
+if(it.ultiem&&it.ultiem.length)h+='<div style="font-size:10px;color:#c62828">🔥 '+esc(it.ultiem.join(", "))+'</div>';
+if(it.nice&&it.nice.length)h+='<div style="font-size:10px;color:#f57f17">💡 '+esc(it.nice.join(", "))+'</div>';
+if(it.done&&it.done.length)h+='<div style="font-size:10px;color:#2e7d32">✅ '+esc(it.done.join(", "))+'</div>';
+h+='</div>';});h+='</div>';});return h;
+}
+
+// Navigation
+function navHome(){selObj=null;showHist=false;confirmSpr=false;render();}
+function navHist(){showHist=true;selObj=null;render();}
+function navObj(id){selObj=id;showHist=false;confirmSpr=false;render();}
+function tog(id){var e=document.getElementById(id);if(e)e.style.display=e.style.display==="none"?"block":"none";}
+function doRefresh(){loadBin().then(function(ok){if(ok){render();toast("🔄 Ververst!");}else toast("❌ Fout");});}
+
+// Helpers
+function findObj(oid){return state.objectives.find(function(o){return o.id===oid;});}
+function findKR(oid,kid){var o=findObj(oid);return o?(o.keyResults||[]).find(function(k){return k.id===kid;}):null;}
+function save(){saveBin();render();}
+
+// CRUD
+function addObj(){var t=prompt("Objective naam:");if(!t||!t.trim())return;state.objectives.push({id:gid(),title:t.trim(),color:CO[state.objectives.length%5],keyResults:[]});save();}
+function delObj(id){if(!confirm("Verwijderen?"))return;state.objectives=state.objectives.filter(function(o){return o.id!==id;});if(selObj===id)selObj=null;save();}
+function setObjPct(id,v){var o=findObj(id);if(o)o.manualPct=parseInt(v);save();}
+function clearObjPct(id){var o=findObj(id);if(o)o.manualPct=null;save();}
+
+function addKR(oid){var t=prompt("Key Result naam:");if(!t||!t.trim())return;var o=findObj(oid);if(o){if(!o.keyResults)o.keyResults=[];o.keyResults.push({id:gid(),title:t.trim(),color:CK[o.keyResults.length%5],target:0,ideas:[],prios:{ultiem:[],nice:[],done:[]}});}save();}
+function delKR(oid,kid){if(!confirm("Verwijderen?"))return;var o=findObj(oid);if(o)o.keyResults=o.keyResults.filter(function(k){return k.id!==kid;});save();}
+function setKRPct(oid,kid,v){var k=findKR(oid,kid);if(k)k.manualPct=parseInt(v);save();}
+function clearKRPct(oid,kid){var k=findKR(oid,kid);if(k)k.manualPct=null;save();}
+
+function addIdea(oid,kid){var t=prompt("Idee:");if(!t||!t.trim())return;var k=findKR(oid,kid);if(k){if(!k.ideas)k.ideas=[];k.ideas.push({id:gid(),text:t.trim(),color:CP[Math.floor(Math.random()*5)],note:""});}save();}
+function delIdea(oid,kid,pid){var k=findKR(oid,kid);if(k)k.ideas=k.ideas.filter(function(i){return i.id!==pid;});save();}
+function moveIdeaUp(oid,kid,pid){var k=findKR(oid,kid);if(!k)return;var idx=k.ideas.findIndex(function(i){return i.id===pid;});if(idx<=0)return;var tmp=k.ideas[idx-1];k.ideas[idx-1]=k.ideas[idx];k.ideas[idx]=tmp;save();}
+function moveIdeaDown(oid,kid,pid){var k=findKR(oid,kid);if(!k)return;var idx=k.ideas.findIndex(function(i){return i.id===pid;});if(idx===-1||idx>=k.ideas.length-1)return;var tmp=k.ideas[idx+1];k.ideas[idx+1]=k.ideas[idx];k.ideas[idx]=tmp;save();}
+
+function moveIdTo(oid,kid,pid,toCol){var k=findKR(oid,kid);if(!k)return;if(toCol!=="done"&&k.prios[toCol].length>=1){toast("Al bezet!");return;}var idx=k.ideas.findIndex(function(i){return i.id===pid;});if(idx===-1)return;var item=k.ideas.splice(idx,1)[0];k.prios[toCol].push(item);save();}
+function movePrio(oid,kid,from,pid,to){if(from===to)return;var k=findKR(oid,kid);if(!k)return;if(to==="ideas"){var idx=k.prios[from].findIndex(function(p){return p.id===pid;});if(idx===-1)return;var item=k.prios[from].splice(idx,1)[0];k.ideas.push(item);save();return;}if(to!=="done"&&k.prios[to].length>=1){toast("Al bezet!");return;}var idx2=k.prios[from].findIndex(function(p){return p.id===pid;});if(idx2===-1)return;var item2=k.prios[from].splice(idx2,1)[0];k.prios[to].push(item2);save();}
+function moveChecked(oid,kid,from,pid,to){var k=findKR(oid,kid);if(!k)return;if(to!=="done"&&k.prios[to].length>=1){toast("Al bezet!");return;}movePrio(oid,kid,from,pid,to);}
+
+function editNote(oid,kid,col,pid){var k=findKR(oid,kid);if(!k)return;var arr=col==="idea"?k.ideas:k.prios[col];var item=arr.find(function(i){return i.id===pid;});if(!item)return;var n=prompt("Notitie:",item.note||"");if(n===null)return;item.note=n;save();}
+function editText(oid,kid,col,pid){var k=findKR(oid,kid);if(!k)return;var arr=col==="idea"?k.ideas:k.prios[col];var item=arr.find(function(i){return i.id===pid;});if(!item)return;var t=prompt("Tekst:",item.text);if(!t||t===null)return;item.text=t;save();}
+function delPrio(oid,kid,col,pid){var k=findKR(oid,kid);if(!k)return;k.prios[col]=k.prios[col].filter(function(p){return p.id!==pid;});save();}
+
+function doSprint(){
+var obj=findObj(selObj);if(!obj)return;var snap=[];
+(obj.keyResults||[]).forEach(function(k){var p=k.prios||{};
+var u=(p.ultiem||[]).map(function(i){return i.text;}),n=(p.nice||[]).map(function(i){return i.text;}),d=(p.done||[]).map(function(i){return i.text;});
+if(u.length+n.length+d.length>0)snap.push({obj:obj.title,kr:k.title,ultiem:u,nice:n,done:d});
+(p.ultiem||[]).forEach(function(i){p.done.push(i);});(p.nice||[]).forEach(function(i){p.done.push(i);});
+k.prios.ultiem=[];k.prios.nice=[];});
+if(!state.sprints)state.sprints=[];
+var now=new Date();state.sprints.push({id:gid(),date:now.toLocaleDateString("nl-NL",{day:"numeric",month:"short",year:"numeric"}),items:snap});
+confirmSpr=false;save();toast("✅ Sprint gearchiveerd!");
+}
+
+function doExport(){
+var json=JSON.stringify(state,null,2);
+var el=document.createElement("div");el.className="modal-bg";el.id="export-modal";
+el.innerHTML='<div class="modal"><h3 style="margin:0 0 8px;font-size:15px">📥 Exporteren</h3><p style="font-size:11px;color:#888;margin-bottom:6px">Kopieer en bewaar in een bestand.</p><textarea id="exp-txt" readonly onclick="this.select()" style="width:100%;height:160px;font-size:10px;font-family:monospace;border:1px solid #ddd;border-radius:8px;padding:6px;box-sizing:border-box;resize:vertical">'+esc(json)+'</textarea><div style="display:flex;gap:6px;margin-top:8px"><button onclick="try{navigator.clipboard.writeText(document.getElementById(\'exp-txt\').value);toast(\'Gekopieerd!\');}catch(e){}" style="background:#1976d2;color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600;font-size:13px">Kopieer</button><button onclick="document.getElementById(\'export-modal\').remove()" style="background:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px">Sluiten</button></div></div>';
+document.body.appendChild(el);
+}
+
+function showImport(){
+var el=document.createElement("div");el.className="modal-bg";el.id="import-modal";
+el.innerHTML='<div class="modal"><h3 style="margin:0 0 8px;font-size:15px">📤 Importeren</h3><p style="font-size:11px;color:#888;margin-bottom:6px">Plak je data hieronder.</p><textarea id="imp-txt" placeholder="Plak JSON..." style="width:100%;height:160px;font-size:10px;font-family:monospace;border:1px solid #ddd;border-radius:8px;padding:6px;box-sizing:border-box;resize:vertical"></textarea><div style="display:flex;gap:6px;margin-top:8px"><button onclick="doImportNow()" style="background:#43a047;color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600;font-size:13px">Importeer</button><button onclick="document.getElementById(\'import-modal\').remove()" style="background:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px">Annuleer</button></div></div>';
+document.body.appendChild(el);
+}
+
+function doImportNow(){
+try{var d=JSON.parse(document.getElementById("imp-txt").value);
+if(d.objectives){state=d;if(!state.sprints)state.sprints=[];save();document.getElementById("import-modal").remove();toast("📤 Geïmporteerd!");}
+else toast("❌ Ongeldig");}catch(e){toast("❌ Fout in data");}
+}
+
+// Init
+loadBin().then(function(ok){render();});
+</script>
+</body>
+</html>
