@@ -34,10 +34,11 @@ input[type=range]{height:6px;cursor:pointer;accent-color:#42a5f5}
 <div id="app"><div style="padding:60px;text-align:center;color:#888"><div style="font-size:52px;margin-bottom:10px">📌</div><p>Laden...</p></div></div>
 <div class="toast" id="toast"></div>
 <script>
-var BIN_ID="69cd6f0036566621a86e13ba";
-var API_KEY=atob("JDJhJDEwJDF5ZTIuVGFWQm41UmpIWnhjSU8uTnVvemV6RlVvZVdDc096WUpzWnRZT3pGM3RYRUJNbi42");
-var BIN_URL="https://api.jsonbin.io/v3/b/"+BIN_ID;
-var PASS=atob("SGY2MzU1OjpwcHF3cy0pKSgoQA==");
+var BIN_ID="x";
+var API_KEY="x";
+var API_URL="/api/data";
+var PASS=null;
+var _rawData=null;
 var CO=["#FFD93D","#FFB347","#FF6B6B","#C9B1FF","#6BCB77"];
 var CK=["#AEE2FF","#B5EAD7","#FFDAC1","#E2F0CB","#FFB7B2"];
 var CP=["#FFF9C4","#FFECB3","#F0F4C3","#CFD8DC","#D1C4E9"];
@@ -52,13 +53,14 @@ function toast(m){var e=document.getElementById("toast");e.textContent=m;e.style
 function linkify(s){return String(s||"").replace(/(https?:\/\/[^\s<]+)/g,function(u){return '<a href="'+u+'" target="_blank" rel="noopener" style="color:#1976d2;font-size:inherit" onclick="event.stopPropagation()">Link</a>';});}
 
 async function loadBin(){
-try{var r=await fetch(BIN_URL+"/latest",{headers:{"X-Access-Key":API_KEY}});
+try{var r=await fetch(API_URL);
 if(!r.ok)return false;var d=await r.json();
-if(d.record&&d.record.objectives){state=d.record;if(!state.sprints)state.sprints=[];return true;}
+if(d){_rawData=d;if(d._auth)PASS=d._auth;if(d.objectives){state={objectives:d.objectives,sprints:d.sprints||[]};return true;}}
 return false;}catch(e){return false;}
 }
 async function saveBin(){
-try{var r=await fetch(BIN_URL,{method:"PUT",headers:{"Content-Type":"application/json","X-Access-Key":API_KEY},body:JSON.stringify(state)});
+var toSave={objectives:state.objectives,sprints:state.sprints,_auth:PASS};
+try{var r=await fetch(API_URL,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(toSave)});
 if(!r.ok)toast("Opslaan mislukt ("+r.status+")");}catch(e){toast("Opslaan mislukt");}
 }
 function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(function(){loadBin().then(function(ok){if(ok)render();});},30000);}
@@ -91,7 +93,7 @@ h+='</div>';document.getElementById("app").innerHTML=h;
 function renderLogin(){
 document.getElementById("app").innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px"><div style="background:#fff;border-radius:16px;padding:32px 24px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center;max-width:340px;width:100%"><div style="font-size:48px;margin-bottom:12px">\u{1F512}</div><h2 style="font-size:18px;color:#333;margin-bottom:4px">OKR Tracker</h2><p style="font-size:13px;color:#888;margin-bottom:20px">Voer het wachtwoord in</p><input type="password" id="pw" placeholder="Wachtwoord" onkeydown="if(event.key===\'Enter\')doLogin()" style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px;outline:none;margin-bottom:8px;box-sizing:border-box"><div id="pw-err" style="display:none;font-size:12px;color:#e53935;margin-bottom:8px">Onjuist wachtwoord</div><button onclick="doLogin()" style="width:100%;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer">Inloggen</button></div></div>';
 }
-function doLogin(){var v=document.getElementById("pw").value;if(v===PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}render();startRefresh();}else{document.getElementById("pw-err").style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
+function doLogin(){var v=document.getElementById("pw").value;if(PASS&&v===PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}render();startRefresh();}else{document.getElementById("pw-err").style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
 
 function navHome(){selObj=null;showHist=false;confirmSpr=false;render();}
 function navHist(){showHist=true;selObj=null;render();}
@@ -149,11 +151,11 @@ h+='<div style="display:flex;gap:3px;align-items:flex-start">';
 h+='<div><button style="font-size:9px;background:none;border:none;cursor:pointer;color:'+(idx===0?"#ccc":"#666")+'" onclick="moveIdeaUp(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\')">&#9650;</button><button style="font-size:9px;background:none;border:none;cursor:pointer;color:'+(idx===ideas.length-1?"#ccc":"#666")+'" onclick="moveIdeaDown(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\')">&#9660;</button></div>';
 h+='<div style="flex:1"><div style="padding-right:12px;margin-bottom:3px">'+esc(idea.text)+'</div>';
 if(idea.note)h+='<div style="font-size:9px;color:#666;font-style:italic;margin-bottom:2px">'+linkify(esc(idea.note))+'</div>';
-h+='<div style="display:flex;gap:3px;flex-wrap:wrap">';
-h+='<button class="sbtn" style="background:#ef5350" onclick="moveIdTo(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\',\'ultiem\')">Ultiem</button>';
-h+='<button class="sbtn" style="background:#ffa726" onclick="moveIdTo(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\',\'nice\')">Nice</button>';
-h+='<button class="sbtn" style="background:#90a4ae" onclick="editNote(\''+obj.id+'\',\''+kr.id+'\',\'idea\',\''+idea.id+'\')">Notitie</button>';
-h+='<button class="sbtn" style="background:#78909c" onclick="editText(\''+obj.id+'\',\''+kr.id+'\',\'idea\',\''+idea.id+'\')">Edit</button>';
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
+h+='<button class="move-btn" style="border-color:#ef5350;color:#ef5350" onclick="moveIdTo(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\',\'ultiem\')">&#9650; Ultiem</button>';
+h+='<button class="move-btn" style="border-color:#ffa726;color:#ffa726" onclick="moveIdTo(\''+obj.id+'\',\''+kr.id+'\',\''+idea.id+'\',\'nice\')">&#9654; Nice</button>';
+h+='<button class="sbtn" style="background:#90a4ae" onclick="editNote(\''+obj.id+'\',\''+kr.id+'\',\'idea\',\''+idea.id+'\')">&#9998; Notitie</button>';
+h+='<button class="sbtn" style="background:#78909c" onclick="editText(\''+obj.id+'\',\''+kr.id+'\',\'idea\',\''+idea.id+'\')">&#9998; Edit</button>';
 h+='</div></div></div></div>';
 });
 h+='<button class="add-d" style="font-size:10px;padding:3px 8px;margin-top:4px" onclick="addIdea(\''+obj.id+'\',\''+kr.id+'\')">+ Idee</button></div>';
@@ -171,13 +173,13 @@ h+='<div class="post-it" style="background:'+esc(bg2)+';opacity:'+(isDone?.8:1)+
 h+='<button class="x-btn" onclick="delPrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">x</button>';
 h+='<div style="padding-right:12px">'+esc(item.text)+'</div>';
 if(item.note)h+='<div style="font-size:9px;color:#666;font-style:italic;margin-top:1px">'+linkify(esc(item.note))+'</div>';
-h+='<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">';
-if(!isDone)h+='<button class="sbtn" style="background:#43a047" onclick="movePrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'done\')">Done</button>';
-h+='<button class="sbtn" style="background:#78909c" onclick="movePrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'ideas\')">Terug</button>';
-if(col.k!=="ultiem"&&!isDone)h+='<button class="sbtn" style="background:#ef5350" onclick="moveChecked(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'ultiem\')">Ultiem</button>';
-if(col.k!=="nice"&&!isDone)h+='<button class="sbtn" style="background:#ffa726" onclick="moveChecked(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'nice\')">Nice</button>';
-h+='<button class="sbtn" style="background:#90a4ae" onclick="editNote(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">Notitie</button>';
-h+='<button class="sbtn" style="background:#78909c" onclick="editText(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">Edit</button>';
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">';
+if(!isDone)h+='<button class="sbtn" style="background:#43a047" onclick="movePrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'done\')">&#10003; Done</button>';
+h+='<button class="move-btn" onclick="movePrio(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'ideas\')">&#8592; Terug</button>';
+if(col.k!=="ultiem"&&!isDone)h+='<button class="move-btn" style="border-color:#ef5350;color:#ef5350" onclick="moveChecked(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'ultiem\')">&#9650; Ultiem</button>';
+if(col.k!=="nice"&&!isDone)h+='<button class="move-btn" style="border-color:#ffa726;color:#ffa726" onclick="moveChecked(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\',\'nice\')">&#9654; Nice</button>';
+h+='<button class="sbtn" style="background:#90a4ae" onclick="editNote(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">&#9998; Notitie</button>';
+h+='<button class="sbtn" style="background:#78909c" onclick="editText(\''+obj.id+'\',\''+kr.id+'\',\''+col.k+'\',\''+item.id+'\')">&#9998; Edit</button>';
 h+='</div></div>';});
 if(!its.length)h+='<div style="text-align:center;font-size:9px;color:#aaa;padding:6px;font-style:italic">Leeg</div>';
 h+='</div></div>';});
@@ -251,7 +253,14 @@ else toast("Ongeldige data");}catch(e){toast("Fout in data");}
 }
 
 // Init
-loadBin().then(function(){render();if(authed)startRefresh();}).catch(function(){render();});
+loadBin().then(function(){
+  if(!PASS){
+    PASS=prompt("Eerste keer: stel een wachtwoord in voor de OKR Tracker:");
+    if(PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}save();startRefresh();}
+  }
+  render();
+  if(authed)startRefresh();
+}).catch(function(){render();});
 </script>
 </body>
 </html>
