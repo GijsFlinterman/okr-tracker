@@ -80,6 +80,7 @@ h+='<button class="btn'+(showHist?" on":"")+'" onclick="navHist()">\u{1F4DC}</bu
 h+='<button class="btn" onclick="doExport()">\u{1F4E5}</button>';
 h+='<button class="btn" onclick="showImportDlg()">\u{1F4E4}</button>';
 h+='<button class="btn" onclick="doRefresh()">\u{1F504}</button>';
+h+='<button class="btn" onclick="changePass()" title="Wachtwoord wijzigen">\u{1F511}</button>';
 if(selObj){var obj=findObj(selObj);if(obj){
 if(!confirmSpr)h+='<button class="btn" style="background:#e53935;color:#fff" onclick="confirmSpr=true;render()">\u{1F3C1}</button>';
 else h+='<span style="font-size:10px;color:#c62828;font-weight:600">Zeker?</span><button class="btn" style="background:#c62828;color:#fff;font-size:10px" onclick="doSprint()">\u2713</button><button class="btn" style="font-size:10px" onclick="confirmSpr=false;render()">\u2715</button>';
@@ -93,7 +94,8 @@ h+='</div>';document.getElementById("app").innerHTML=h;
 function renderLogin(){
 document.getElementById("app").innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px"><div style="background:#fff;border-radius:16px;padding:32px 24px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center;max-width:340px;width:100%"><div style="font-size:48px;margin-bottom:12px">\u{1F512}</div><h2 style="font-size:18px;color:#333;margin-bottom:4px">OKR Tracker</h2><p style="font-size:13px;color:#888;margin-bottom:20px">Voer het wachtwoord in</p><input type="password" id="pw" placeholder="Wachtwoord" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key===\'Enter\')doLogin()" style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px;outline:none;margin-bottom:8px;box-sizing:border-box"><div id="pw-err" style="display:none;font-size:12px;color:#e53935;margin-bottom:8px">Onjuist wachtwoord</div><button onclick="doLogin()" style="width:100%;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer">Inloggen</button></div></div>';
 }
-function doLogin(){var v=document.getElementById("pw").value;if(PASS&&v===PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}render();startRefresh();}else{document.getElementById("pw-err").style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
+function doLogin(){var v=document.getElementById("pw").value;if(PASS&&v===PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}render();startRefresh();}else{var err=document.getElementById("pw-err");err.textContent="Onjuist. PASS="+(PASS?"geladen ("+PASS.length+" tekens)":"NIET GELADEN")+" ingevoerd: "+v.length+" tekens";err.style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
+function changePass(){if(!authed)return;var n=prompt("Nieuw wachtwoord instellen:");if(!n)return;PASS=n;save();toast("Wachtwoord gewijzigd!");}
 
 function navHome(){selObj=null;showHist=false;confirmSpr=false;render();}
 function navHist(){showHist=true;selObj=null;render();}
