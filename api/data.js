@@ -52,7 +52,18 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
 
   if (!BIN_ID || !API_KEY || !PASSWORD || !SECRET || SECRET.length < 32) {
-    return res.status(500).json({ error: "Server niet geconfigureerd" });
+    // Tijdelijke diagnose: laat zien welke variabele ontbreekt, zonder waarden prijs te geven.
+    // Verwijder dit blok weer zodra de configuratie klopt.
+    return res.status(500).json({
+      error: "Server niet geconfigureerd",
+      missing: {
+        JSONBIN_BIN_ID: !BIN_ID,
+        JSONBIN_API_KEY: !API_KEY,
+        OKR_PASSWORD: !PASSWORD,
+        OKR_SESSION_SECRET: !SECRET,
+        OKR_SESSION_SECRET_te_kort: !!SECRET && SECRET.length < 32,
+      },
+    });
   }
 
   // Inloggen: POST { password } → { token }
