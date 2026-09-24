@@ -34,10 +34,8 @@ input[type=range]{height:6px;cursor:pointer;accent-color:#42a5f5}
 <div id="app"><div style="padding:60px;text-align:center;color:#888"><div style="font-size:52px;margin-bottom:10px">📌</div><p>Laden...</p></div></div>
 <div class="toast" id="toast"></div>
 <script>
-var BIN_ID="x";
-var API_KEY="x";
 var API_URL="/api/data";
-var PASS=null;
+var TOKEN=null;
 var _rawData=null;
 var CO=["#FFD93D","#FFB347","#FF6B6B","#C9B1FF","#6BCB77"];
 var CK=["#AEE2FF","#B5EAD7","#FFDAC1","#E2F0CB","#FFB7B2"];
@@ -45,7 +43,9 @@ var CP=["#FFF9C4","#FFECB3","#F0F4C3","#CFD8DC","#D1C4E9"];
 var state={objectives:[],sprints:[]};
 var authed=false,selObj=null,showHist=false,confirmSpr=false;
 var refreshTimer=null;
-try{if(sessionStorage.getItem("okr-auth")==="yes")authed=true;}catch(e){}
+try{TOKEN=sessionStorage.getItem("okr-token");if(TOKEN)authed=true;}catch(e){}
+function authH(extra){var h=extra||{};h["Authorization"]="Bearer "+TOKEN;return h;}
+function onUnauth(){authed=false;TOKEN=null;try{sessionStorage.removeItem("okr-token");}catch(e){}if(refreshTimer)clearInterval(refreshTimer);render();}
 
 function gid(){return Math.random().toString(36).substr(2,9);}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
@@ -53,14 +53,17 @@ function toast(m){var e=document.getElementById("toast");e.textContent=m;e.style
 function linkify(s){return String(s||"").replace(/(https?:\/\/[^\s<]+)/g,function(u){return '<a href="'+u+'" target="_blank" rel="noopener" style="color:#1976d2;font-size:inherit" onclick="event.stopPropagation()">Link</a>';});}
 
 async function loadBin(){
-try{var r=await fetch(API_URL);
+if(!TOKEN)return false;
+try{var r=await fetch(API_URL,{headers:authH()});
+if(r.status===401){onUnauth();return false;}
 if(!r.ok)return false;var d=await r.json();
-if(d){_rawData=d;if(d._auth)PASS=d._auth;if(d.objectives){state={objectives:d.objectives,sprints:d.sprints||[]};return true;}}
+if(d){_rawData=d;if(d.objectives){state={objectives:d.objectives,sprints:d.sprints||[]};return true;}}
 return false;}catch(e){return false;}
 }
 async function saveBin(){
-var toSave={objectives:state.objectives,sprints:state.sprints,_auth:PASS};
-try{var r=await fetch(API_URL,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(toSave)});
+var toSave={objectives:state.objectives,sprints:state.sprints};
+try{var r=await fetch(API_URL,{method:"PUT",headers:authH({"Content-Type":"application/json"}),body:JSON.stringify(toSave)});
+if(r.status===401){toast("Sessie verlopen, log opnieuw in");onUnauth();return;}
 if(!r.ok)toast("Opslaan mislukt ("+r.status+")");}catch(e){toast("Opslaan mislukt");}
 }
 function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(function(){loadBin().then(function(ok){if(ok)render();});},600000);}
@@ -80,7 +83,6 @@ h+='<button class="btn'+(showHist?" on":"")+'" onclick="navHist()">\u{1F4DC}</bu
 h+='<button class="btn" onclick="doExport()">\u{1F4E5}</button>';
 h+='<button class="btn" onclick="showImportDlg()">\u{1F4E4}</button>';
 h+='<button class="btn" onclick="doRefresh()">\u{1F504}</button>';
-h+='<button class="btn" onclick="changePass()" title="Wachtwoord wijzigen">\u{1F511}</button>';
 h+='<button class="btn" onclick="doLogout()" title="Uitloggen">\u{1F6AA}</button>';
 if(selObj){var obj=findObj(selObj);if(obj){
 if(!confirmSpr)h+='<button class="btn" style="background:#e53935;color:#fff" onclick="confirmSpr=true;render()" title="Sprint afsluiten">\u{1F3C1}</button>';
@@ -95,9 +97,13 @@ h+='</div>';document.getElementById("app").innerHTML=h;
 function renderLogin(){
 document.getElementById("app").innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px"><div style="background:#fff;border-radius:16px;padding:32px 24px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center;max-width:340px;width:100%"><div style="font-size:48px;margin-bottom:12px">\u{1F512}</div><h2 style="font-size:18px;color:#333;margin-bottom:4px">OKR Tracker</h2><p style="font-size:13px;color:#888;margin-bottom:20px">Voer het wachtwoord in</p><input type="password" id="pw" placeholder="Wachtwoord" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key===\'Enter\')doLogin()" style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px;outline:none;margin-bottom:8px;box-sizing:border-box"><div id="pw-err" style="display:none;font-size:12px;color:#e53935;margin-bottom:8px">Onjuist wachtwoord</div><button onclick="doLogin()" style="width:100%;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer">Inloggen</button></div></div>';
 }
-function doLogin(){var v=document.getElementById("pw").value;if(PASS&&v===PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}render();startRefresh();}else{document.getElementById("pw-err").style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
-function doLogout(){authed=false;try{sessionStorage.removeItem("okr-auth");}catch(e){}if(refreshTimer)clearInterval(refreshTimer);render();}
-function changePass(){if(!authed)return;var n=prompt("Nieuw wachtwoord instellen:");if(!n)return;PASS=n;save();toast("Wachtwoord gewijzigd!");}
+async function doLogin(){var v=document.getElementById("pw").value;var ok=false;
+try{var r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:v})});
+if(r.ok){var d=await r.json();TOKEN=d.token;ok=!!TOKEN;}}catch(e){}
+if(ok){authed=true;try{sessionStorage.setItem("okr-token",TOKEN);}catch(e){}await loadBin();render();startRefresh();}
+else{document.getElementById("pw-err").style.display="block";document.getElementById("pw").style.border="2px solid #e53935";}}
+function doLogout(){onUnauth();}
+// Wachtwoord wijzigen: pas OKR_PASSWORD aan in Vercel (Environment Variables) en redeploy.
 
 function navHome(){selObj=null;showHist=false;confirmSpr=false;render();}
 function navHist(){showHist=true;selObj=null;render();}
@@ -258,10 +264,6 @@ else toast("Ongeldige data");}catch(e){toast("Fout in data");}
 
 // Init
 loadBin().then(function(){
-  if(!PASS){
-    PASS=prompt("Eerste keer: stel een wachtwoord in voor de OKR Tracker:");
-    if(PASS){authed=true;try{sessionStorage.setItem("okr-auth","yes");}catch(e){}save();startRefresh();}
-  }
   render();
   if(authed)startRefresh();
 }).catch(function(){render();});
